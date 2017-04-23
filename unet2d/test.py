@@ -36,7 +36,7 @@ def evaluate():
             
             total_accuracy = 0
 
-            for i in range(2000):
+            for i in range(3000):
                 img_test, lab_test = functions.test_inputs()
                 plt.subplot(2, 2, 1)
                 plt.imshow(img_test, cmap='gray')
