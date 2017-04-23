@@ -159,7 +159,7 @@ train_step = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
 
 sess = tf.Session()
 sess.run(tf.global_variables_initializer())
-for i in range(1000):
+for i in range(10000):
     img, lab = inputs()
     print(i, end=', ')
 
