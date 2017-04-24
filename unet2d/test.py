@@ -6,6 +6,7 @@ Created on Apr 20, 2017
 import tensorflow as tf
 from unet2d import functions
 import matplotlib.pyplot as plt
+from sklearn import metrics
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -36,8 +37,8 @@ def evaluate():
             
             total_accuracy = 0
 
-            for i in range(2000):
-                img_test, lab_test = functions.test_inputs()
+            for _ in range(2000):
+                img_test, lab_test = functions.inputs(isTestData=True, useGTData=True, randomly=False)
                 plt.subplot(2, 2, 1)
                 plt.imshow(img_test, cmap='gray')
                 plt.subplot(2, 2, 2)

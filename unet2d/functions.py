@@ -44,13 +44,12 @@ class GetData():
         if randomly:
             if self.NUM < 0:
                 self.read_files()
-            index = np.random.randint(0, self.NUM)
             self.n += 1
             if self.n > self.NUM:
                 self.read_files()
-                self.n = 0
-            else:
-                return self.images[:, :, index], self.labels[:, :, index]
+                self.n = 1
+            index = np.random.randint(0, self.NUM)
+            return self.images[:, :, index], self.labels[:, :, index]
         else:
             if self.n + 1 >= self.NUM:
                 self.read_files()
@@ -68,7 +67,7 @@ def inputs(isTestData, useGTData, randomly):
     img, lab = getDataMachine.get_a_slice(randomly)
     if useGTData:
         while(np.max(lab) == np.min(lab)):
-            img, lab = getDataMachine.get_a_slice()
+            img, lab = getDataMachine.get_a_slice(randomly)
         
     # img = (img - np.min(img)) / (np.max(img) - np.min(img)) * 255
     lab = lab.astype(np.int)
