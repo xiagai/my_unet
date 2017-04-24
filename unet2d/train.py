@@ -10,7 +10,7 @@ import time
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '//houseware/codalab/Liver_Tumor_Segmentation_Challenge/training_result2',
+tf.app.flags.DEFINE_string('train_dir', '//houseware/codalab/Liver_Tumor_Segmentation_Challenge/training_result',
                            """Directory where to write event logs"""
                            """and checkpoint.""")
 tf.app.flags.DEFINE_integer('max_steps', 10000,
@@ -61,7 +61,7 @@ def train():
             config=tf.ConfigProto(
                 log_device_placement=FLAGS.log_device_placement)) as mon_sess:
             while not mon_sess.should_stop():
-                img, lab = functions.inputs()
+                img, lab = functions.inputs(isTestData=False, useGTData=True, randomly=True)
                 mon_sess.run(train_op, feed_dict={x: img, y: lab})
                     
         
