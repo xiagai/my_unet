@@ -11,8 +11,9 @@ import nibabel as nib
 INITIAL_LEARNING_RATE = 0.01
 
 class GetData():
-    def __init__(self):
+    def __init__(self, isTestData):
         self.data_dir = '/houseware/codalab/Liver_Tumor_Segmentation_Challenge/'
+        self.isTestData = isTestData
         self.n = 0
         self.i = None
         self.NUM = -1
@@ -21,7 +22,10 @@ class GetData():
         
     def read_files(self):
         training_batch_dir = os.path.join(self.data_dir, 'Training_Batch')
-        self.i = np.random.randint(0, 131)
+        if self.isTestData:
+            self.i = np.random.randint(110, 131)
+        else:
+            self.i = np.random.randint(0, 110)
         print(self.i)
         image_filename = os.path.join(training_batch_dir, 'volume-%d.nii' % self.i)
         label_filename = os.path.join(training_batch_dir, 'segmentation-%d.nii' % self.i)
@@ -36,67 +40,46 @@ class GetData():
         self.NUM = self.images.shape[2]
         self.labels[self.labels == 2] = 1
         
-    def read_test_files(self):
-        training_batch_dir = os.path.join(self.data_dir, 'Training_Batch')
-        self.i = np.random.randint(110, 131)
-        
-        image_filename = os.path.join(training_batch_dir, 'volume-%d.nii' % self.i)
-        label_filename = os.path.join(training_batch_dir, 'segmentation-%d.nii' % self.i)
-        
-        if not tf.gfile.Exists(image_filename):
-            raise ValueError('Failed to find file: ' + image_filename)
-        if not tf.gfile.Exists(label_filename):
-            raise ValueError('Failed to find file: ' + label_filename)
-        
-        self.images = nib.load(image_filename).get_data()
-        self.labels = nib.load(label_filename).get_data()
-        self.NUM = self.images.shape[2]
-        self.labels[self.labels == 2] = 1
-    
-    def get_a_slice(self):
-        if self.n + 1 >= self.NUM:
-            self.read_files()
-            self.n = 0
-            return self.images[:, :, self.n], self.labels[:, :, self.n]
-        else:
+    def get_a_slice(self, randomly):
+        if randomly:
+            if self.NUM < 0:
+                self.read_files()
             self.n += 1
-            return self.images[:, :, self.n], self.labels[:, :, self.n]
-        
-    def get_a_test_slice(self):
-        if self.n + 1 >= self.NUM:
-            self.read_test_files()
-            self.n = 0
-            return self.images[:, :, self.n], self.labels[:, :, self.n]
+            if self.n > self.NUM:
+                self.read_files()
+                self.n = 1
+            index = np.random.randint(0, self.NUM)
+            return self.images[:, :, index], self.labels[:, :, index]
         else:
-            self.n += 1
-            return self.images[:, :, self.n], self.labels[:, :, self.n]
+            if self.n + 1 >= self.NUM:
+                self.read_files()
+                self.n = 0
+                return self.images[:, :, self.n], self.labels[:, :, self.n]
+            else:
+                self.n += 1
+                return self.images[:, :, self.n], self.labels[:, :, self.n]
 
+getTrainDataMachine = GetData(False)
+getTestDataMachine = GetData(True)
 
-GetDataMachine = GetData()
-
-def inputs():
-    img, lab = GetDataMachine.get_a_slice()
-    while(np.max(lab) == np.min(lab)):
-        img, lab = GetDataMachine.get_a_slice()
+def inputs(isTestData, useGTData, randomly):
+    getDataMachine = getTestDataMachine if isTestData else getTrainDataMachine
+    img, lab = getDataMachine.get_a_slice(randomly)
+    if useGTData:
+        while(np.max(lab) == np.min(lab)):
+            img, lab = getDataMachine.get_a_slice(randomly)
+        
     # img = (img - np.min(img)) / (np.max(img) - np.min(img)) * 255
     lab = lab.astype(np.int)
     lab2 = lab - 1
     lab2[lab2 == -1] = 1
-    lab = np.reshape(lab, [512, 512, 1])
-    lab2 = np.reshape(lab2, [512, 512, 1])
-    lab = np.concatenate([lab, lab2], axis=2)
-    return img, lab
-
-GetTestDataMachine = GetData()
-
-def test_inputs():
-    img, lab = GetTestDataMachine.get_a_test_slice()
-    while(np.max(lab) == np.min(lab)):
-        img, lab = GetTestDataMachine.get_a_test_slice()
-    lab = lab.astype(np.int)
-    lab2 = lab - 1
-    lab2[lab2 == -1] = 1
-    return img, lab2
+    if isTestData:
+        return img, lab2
+    else:
+        lab = np.reshape(lab, [512, 512, 1])
+        lab2 = np.reshape(lab2, [512, 512, 1])
+        lab = np.concatenate([lab, lab2], axis=2)
+        return img, lab
 
 def _variable_on_cpu(name, shape, initializer):
     """Helper to create a Variable.
@@ -488,29 +471,4 @@ def train(loss, global_step):
     opt = tf.train.GradientDescentOptimizer(INITIAL_LEARNING_RATE)
     train_op = opt.minimize(loss, global_step)
     return train_op
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
