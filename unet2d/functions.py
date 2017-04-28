@@ -75,7 +75,7 @@ def inputs(isTestData, useGTData, weighted_label, randomly):
     lab2[lab2 == 1] = 0
     lab2[lab2 == -1] = 1
     if isTestData:
-        return img, lab2
+        return img, lab
     else:
         if weighted_label and np.count_nonzero(lab) != 0:
             weight = np.count_nonzero(lab) / float(np.count_nonzero(lab2))

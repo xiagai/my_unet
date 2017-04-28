@@ -5,9 +5,7 @@ Created on Apr 20, 2017
 '''
 import tensorflow as tf
 from unet2d import functions
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import metrics
 from unet2d import metric
 
 
@@ -29,7 +27,7 @@ def evaluate():
         
         logits = functions.inference(image, 32)
         pos_map = tf.nn.softmax(logits)
-        prediction_map = tf.reshape(tf.argmax(pos_map, axis=3), [512, 512])
+        prediction_map = tf.reshape(tf.argmin(pos_map, axis=3), [512, 512])
         correct_prediction = tf.equal(prediction_map, label)
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         
@@ -49,8 +47,6 @@ def evaluate():
                 pos_array_threshold = pos_array.copy()
                 pos_array_threshold[pos_array_threshold > 0.2] = 1
                 pos_array_threshold[pos_array_threshold <= 0.2] = 0
-                pos_array_threshold = pos_array_threshold - 1
-                pos_array_threshold[pos_array_threshold == -1] = 1
                 # plot part
                 '''
                 plt.subplot(3, 2, 1)
@@ -66,26 +62,7 @@ def evaluate():
                 plt.show()
                 '''
                 acc = accuracy.eval(feed_dict={x: img_test, y: lab_test}, session=sess)
-                '''
-                sample_weight = lab_test + prediction
-                sample_weight[sample_weight == 0] = 1
-                sample_weight[sample_weight == 2] = 0
-                lab_1d = np.reshape(lab_test, [512 * 512])
-                pred_1d = np.reshape(prediction, [512 * 512])
-                sample_weight_1d = np.reshape(sample_weight, [512 * 512])
-                '''
                 
-                sample_weight = lab_test + pos_array_threshold
-                sample_weight[sample_weight == 0] = 1
-                sample_weight[sample_weight == 2] = 0
-                lab_1d = np.reshape(lab_test, [512 * 512])
-                pred_1d = np.reshape(pos_array_threshold, [512 * 512])
-                sample_weight_1d = np.reshape(sample_weight, [512 * 512])
-                
-                if np.sum(sample_weight_1d) == 0:
-                    jc = 1
-                else:
-                    jc = metrics.jaccard_similarity_score(lab_1d, pred_1d, sample_weight=sample_weight_1d)
                 jaccard = metric.jc(lab_test, pos_array_threshold)
                 '''
                 total_jc += jc
@@ -95,6 +72,5 @@ def evaluate():
                     print("accuracy: %.4f, jc: %.4f" % (total_accuracy / (i + 1), (total_jc / (i + 1))))
                 '''
                 print("acc: %.4f" %acc)
-                print("jc: %.4f" %jc)
                 print("jaccard: %.4f" % jaccard)
 evaluate()
