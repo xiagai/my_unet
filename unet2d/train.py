@@ -10,7 +10,7 @@ import time
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '//houseware/codalab/Liver_Tumor_Segmentation_Challenge/training_result3',
+tf.app.flags.DEFINE_string('train_dir', '//houseware/codalab/Liver_Tumor_Segmentation_Challenge/training_result5',
                            """Directory where to write event logs"""
                            """and checkpoint.""")
 tf.app.flags.DEFINE_integer('max_steps', 10000,
@@ -27,7 +27,7 @@ def train():
         image = tf.reshape(x, [1, 512, 512, 1])
         label = tf.reshape(y, [1, 512, 512, 2])
         
-        logits = functions.inference(image)
+        logits = functions.inference(image, 32)
         loss = functions.loss(logits, label)
         train_op = functions.train(loss, global_step)
         
@@ -61,7 +61,7 @@ def train():
             config=tf.ConfigProto(
                 log_device_placement=FLAGS.log_device_placement)) as mon_sess:
             while not mon_sess.should_stop():
-                img, lab = functions.inputs(isTestData=False, useGTData=False, randomly=True)
+                img, lab = functions.inputs(isTestData=False, useGTData=True, weighted_label=False, randomly=True)
                 mon_sess.run(train_op, feed_dict={x: img, y: lab})
                     
         

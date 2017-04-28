@@ -62,7 +62,7 @@ class GetData():
 getTrainDataMachine = GetData(False)
 getTestDataMachine = GetData(True)
 
-def inputs(isTestData, useGTData, randomly):
+def inputs(isTestData, useGTData, weighted_label, randomly):
     getDataMachine = getTestDataMachine if isTestData else getTrainDataMachine
     img, lab = getDataMachine.get_a_slice(randomly)
     if useGTData:
@@ -72,10 +72,16 @@ def inputs(isTestData, useGTData, randomly):
     # img = (img - np.min(img)) / (np.max(img) - np.min(img)) * 255
     lab = lab.astype(np.int)
     lab2 = lab - 1
+    lab2[lab2 == 1] = 0
     lab2[lab2 == -1] = 1
     if isTestData:
         return img, lab2
     else:
+        if weighted_label and np.count_nonzero(lab) != 0:
+            weight = np.count_nonzero(lab) / float(np.count_nonzero(lab2))
+            lab = lab * 1 / weight
+            lab2 = lab2 * weight
+            
         lab = np.reshape(lab, [512, 512, 1])
         lab2 = np.reshape(lab2, [512, 512, 1])
         lab = np.concatenate([lab, lab2], axis=2)
@@ -177,31 +183,37 @@ def _copy_and_concat(inputs, copy):
     """
     return tf.concat([inputs, copy], 3)
     
-def inference(image):
+def inference(image, num_of_templates):
     """Build the U-net
     
     Args:
         image: The image returned from inputs()
-    
+        num_of_templates: The number of templates of the first layer
+        
     Returns:
         The last convolution result
     """
+    n1 = num_of_templates
+    n2 = n1 * 2
+    n3 = n2 * 2
+    n4 = n3 * 2
+    n5 = n4 * 2
     # conv1
     conv1 = _conv_layer(scope_name='conv1',
-                        kernal_shape=[3, 3, 1, 32],
+                        kernal_shape=[3, 3, 1, n1],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=image,
-                        biases_shape=[32],
+                        biases_shape=[n1],
                         initial_biases=0.0)
     
     # conv2
     conv2 = _conv_layer(scope_name='conv2',
-                        kernal_shape=[3, 3, 32, 32],
+                        kernal_shape=[3, 3, n1, n1],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv1,
-                        biases_shape=[32],
+                        biases_shape=[n1],
                         initial_biases=0.0)
 
     # pool3
@@ -213,20 +225,20 @@ def inference(image):
     
     # conv4
     conv4 = _conv_layer(scope_name='conv4',
-                        kernal_shape=[3, 3, 32, 64],
+                        kernal_shape=[3, 3, n1, n2],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=pool3,
-                        biases_shape=[64],
+                        biases_shape=[n2],
                         initial_biases=0.0)
     
     # conv5
     conv5 = _conv_layer(scope_name='conv5',
-                        kernal_shape=[3, 3, 64, 64],
+                        kernal_shape=[3, 3, n2, n2],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv4,
-                        biases_shape=[64],
+                        biases_shape=[n2],
                         initial_biases=0.0)
     
     # pool6
@@ -238,20 +250,20 @@ def inference(image):
     
     # conv7
     conv7 = _conv_layer(scope_name='conv7',
-                        kernal_shape=[3, 3, 64, 128],
+                        kernal_shape=[3, 3, n2, n3],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=pool6,
-                        biases_shape=[128],
+                        biases_shape=[n3],
                         initial_biases=0.0)
     
     # conv8
     conv8 = _conv_layer(scope_name='conv8',
-                        kernal_shape=[3, 3, 128, 128],
+                        kernal_shape=[3, 3, n3, n3],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv7,
-                        biases_shape=[128],
+                        biases_shape=[n3],
                         initial_biases=0.0)
     
     # pool9
@@ -263,20 +275,20 @@ def inference(image):
 
     # conv10
     conv10 = _conv_layer(scope_name='conv10',
-                        kernal_shape=[3, 3, 128, 256],
+                        kernal_shape=[3, 3, n3, n4],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=pool9,
-                        biases_shape=[256],
+                        biases_shape=[n4],
                         initial_biases=0.0)
     
     # conv11
     conv11 = _conv_layer(scope_name='conv11',
-                        kernal_shape=[3, 3, 256, 256],
+                        kernal_shape=[3, 3, n4, n4],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv10,
-                        biases_shape=[256],
+                        biases_shape=[n4],
                         initial_biases=0.0)
     
     # pool12
@@ -288,25 +300,25 @@ def inference(image):
     
     # conv13
     conv13 = _conv_layer(scope_name='conv13',
-                        kernal_shape=[3, 3, 256, 512],
+                        kernal_shape=[3, 3, n4, n5],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=pool12,
-                        biases_shape=[512],
+                        biases_shape=[n5],
                         initial_biases=0.0)
     
     # conv14
     conv14 = _conv_layer(scope_name='conv14',
-                        kernal_shape=[3, 3, 512, 512],
+                        kernal_shape=[3, 3, n5, n5],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv13,
-                        biases_shape=[512],
+                        biases_shape=[n5],
                         initial_biases=0.0)
     
     # up_conv15
     up_conv15 = _upconv_layer(scope_name='up-conv15',
-                              kernal_shape=[2, 2, 256, 512],
+                              kernal_shape=[2, 2, n4, n5],
                               kernal_stddev=5e-2, 
                               kernal_wd=None,
                               inputs=conv14,
@@ -319,25 +331,25 @@ def inference(image):
     
     # conv16
     conv16 = _conv_layer(scope_name='conv16',
-                        kernal_shape=[3, 3, 512, 256],
+                        kernal_shape=[3, 3, n5, n4],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=copy_and_concat1,
-                        biases_shape=[256],
+                        biases_shape=[n4],
                         initial_biases=0.0)
     
     # conv17
     conv17 = _conv_layer(scope_name='conv17',
-                        kernal_shape=[3, 3, 256, 256],
+                        kernal_shape=[3, 3, n4, n4],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv16,
-                        biases_shape=[256],
+                        biases_shape=[n4],
                         initial_biases=0.0)
     
     # up_conv18
     up_conv18 = _upconv_layer(scope_name='up-conv18',
-                              kernal_shape=[2, 2, 128, 256],
+                              kernal_shape=[2, 2, n3, n4],
                               kernal_stddev=5e-2,
                               kernal_wd=None,
                               inputs=conv17,
@@ -350,25 +362,25 @@ def inference(image):
     
     # conv19
     conv19 = _conv_layer(scope_name='conv19',
-                        kernal_shape=[3, 3, 256, 128],
+                        kernal_shape=[3, 3, n4, n3],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=copy_and_concat2,
-                        biases_shape=[128],
+                        biases_shape=[n3],
                         initial_biases=0.0)
     
     # conv20
     conv20 = _conv_layer(scope_name='conv20',
-                        kernal_shape=[3, 3, 128, 128],
+                        kernal_shape=[3, 3, n3, n3],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv19,
-                        biases_shape=[128],
+                        biases_shape=[n3],
                         initial_biases=0.0)
     
     # up_conv21
     up_conv21 = _upconv_layer(scope_name='up-conv21',
-                              kernal_shape=[2, 2, 64, 128],
+                              kernal_shape=[2, 2, n2, n3],
                               kernal_stddev=5e-2,
                               kernal_wd=None,
                               inputs=conv20,
@@ -381,25 +393,25 @@ def inference(image):
     
     # conv22
     conv22 = _conv_layer(scope_name='conv22',
-                        kernal_shape=[3, 3, 128, 64],
+                        kernal_shape=[3, 3, n3, n2],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=copy_and_concat3,
-                        biases_shape=[64],
+                        biases_shape=[n2],
                         initial_biases=0.0)
     
     # conv23
     conv23 = _conv_layer(scope_name='conv23',
-                        kernal_shape=[3, 3, 64, 64],
+                        kernal_shape=[3, 3, n2, n2],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv22,
-                        biases_shape=[64],
+                        biases_shape=[n2],
                         initial_biases=0.0)
     
     # up_conv24
     up_conv24 = _upconv_layer(scope_name='up-conv24',
-                              kernal_shape=[2, 2, 32, 64],
+                              kernal_shape=[2, 2, n1, n2],
                               kernal_stddev=5e-2,
                               kernal_wd=None,
                               inputs=conv23,
@@ -412,25 +424,25 @@ def inference(image):
     
     # conv25
     conv25 = _conv_layer(scope_name='conv25',
-                        kernal_shape=[3, 3, 64, 32],
+                        kernal_shape=[3, 3, n2, n1],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=copy_and_concat4,
-                        biases_shape=[32],
+                        biases_shape=[n1],
                         initial_biases=0.0)
     
     # conv26
     conv26 = _conv_layer(scope_name='conv26',
-                        kernal_shape=[3, 3, 32, 32],
+                        kernal_shape=[3, 3, n1, n1],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv25,
-                        biases_shape=[32],
+                        biases_shape=[n1],
                         initial_biases=0.0)
     
     # conv27
     conv27 = _conv_layer(scope_name='conv27',
-                        kernal_shape=[3, 3, 32, 2],
+                        kernal_shape=[3, 3, n1, 2],
                         kernal_stddev=5e-2,
                         kernal_wd=None,
                         inputs=conv26,
