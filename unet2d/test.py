@@ -4,6 +4,7 @@ Created on Apr 20, 2017
 @author: xiagai
 '''
 import tensorflow as tf
+import numpy as np
 from unet2d import functions
 import matplotlib.pyplot as plt
 from unet2d import metric
@@ -20,16 +21,14 @@ tf.app.flags.DEFINE_string('train_dir', '/houseware/codalab/Liver_Tumor_Segmenta
 def evaluate():
     with tf.Graph().as_default():
         x = tf.placeholder(tf.float32, [512, 512])
-        y = tf.placeholder(tf.int64, [512, 512])
+        # y = tf.placeholder(tf.int64, [512, 512])
         
         image = tf.reshape(x, [1, 512, 512, 1])
-        label = tf.reshape(y, [512, 512])
+        # label = tf.reshape(y, [512, 512])
         
         logits = functions.inference(image, 32)
         pos_map = tf.nn.softmax(logits)
         prediction_map = tf.reshape(tf.argmin(pos_map, axis=3), [512, 512])
-        correct_prediction = tf.equal(prediction_map, label)
-        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         
         safer = tf.train.Saver()
         
@@ -38,8 +37,13 @@ def evaluate():
             if ckpt and ckpt.model_checkpoint_path:
                 safer.restore(sess, ckpt.model_checkpoint_path)
             
-            total_accuracy = 0
-            total_jc = 0
+            scores = {}
+            scores['dc'] = 0.
+            scores['jc'] = 0.
+            scores['ravd'] = 0.
+            scores['assd'] = 0.
+            scores['hd'] = 0.
+            
             for i in range(2000):
                 img_test, lab_test = functions.inputs(isTestData=True, useGTData=True, weighted_label=False, randomly=False)
                 prediction = prediction_map.eval(feed_dict={x: img_test}, session=sess)
@@ -61,16 +65,25 @@ def evaluate():
                 plt.imshow(pos_array_threshold, cmap='gray')
                 plt.show()
                 '''
-                acc = accuracy.eval(feed_dict={x: img_test, y: lab_test}, session=sess)
                 
-                jaccard = metric.jc(lab_test, pos_array_threshold)
-                '''
-                total_jc += jc
-                total_accuracy += acc
+                dc = metric.dice(pos_array_threshold, lab_test)
+                jc = metric.jaccard(pos_array_threshold, lab_test)
+                ravd = metric.ravd(pos_array_threshold, lab_test)
+                if 0 == np.count_nonzero(pos_array_threshold) or 0 == np.count_nonzero(lab_test):
+                    assd = scores['assd'] / (i + 1)
+                    hd = scores['hd'] / (i + 1)
+                else:
+                    assd = metric.assd(pos_array_threshold, lab_test)
+                    hd = metric.hausdorff(pos_array_threshold, lab_test)
+                scores['dc'] += dc
+                scores['jc'] += jc
+                scores['ravd'] += ravd
+                scores['assd'] += assd
+                scores['hd'] += hd
                 
                 if i % 100 == 0 and i != 0:
-                    print("accuracy: %.4f, jc: %.4f" % (total_accuracy / (i + 1), (total_jc / (i + 1))))
-                '''
-                print("acc: %.4f" %acc)
-                print("jaccard: %.4f" % jaccard)
+                    for k, v in scores.items():
+                        print(k + ': ', end='')
+                        print((v / (i + 1)), end='    ')
+                    print('\n')
 evaluate()
