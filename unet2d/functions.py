@@ -8,7 +8,9 @@ import tensorflow as tf
 import numpy as np
 import nibabel as nib
 
-INITIAL_LEARNING_RATE = 0.01
+INITIAL_LEARNING_RATE = 0.005
+DECAY_STEPS = 4000
+DECAY_FACTOR = 0.1
 
 class GetData():
     def __init__(self, isTestData):
@@ -69,7 +71,6 @@ def inputs(isTestData, useGTData, weighted_label, randomly):
         while(np.max(lab) == np.min(lab)):
             img, lab = getDataMachine.get_a_slice(randomly)
         
-    # img = (img - np.min(img)) / (np.max(img) - np.min(img)) * 255
     lab = lab.astype(np.int)
     lab2 = lab - 1
     lab2[lab2 == 1] = 0
@@ -77,10 +78,11 @@ def inputs(isTestData, useGTData, weighted_label, randomly):
     if isTestData:
         return img, lab
     else:
-        if weighted_label and np.count_nonzero(lab) != 0:
-            weight = np.count_nonzero(lab) / float(np.count_nonzero(lab2))
-            lab = lab * 1 / weight
-            lab2 = lab2 * weight
+        if weighted_label != 0:
+            object_size = float(np.count_nonzero(lab))
+            background_size = float(np.count_nonzero(lab2))
+            lab = lab * weighted_label
+            lab2 = lab2 * (1 - (weighted_label - 1) * object_size / background_size)
             
         lab = np.reshape(lab, [512, 512, 1])
         lab2 = np.reshape(lab2, [512, 512, 1])
@@ -451,7 +453,11 @@ def inference(image, num_of_templates):
     
     return conv27
 
-def loss(logits, label):
+def softmax(logits):
+    pos_map = tf.nn.softmax(logits)
+    return pos_map
+
+def loss(pos_map, label):
     """Calculate the losses
     
     Args:
@@ -462,13 +468,12 @@ def loss(logits, label):
         The losses of this instance
     """
     
-    pos_map = tf.nn.softmax(logits)
     cross_entropy_map = label * tf.log(tf.clip_by_value(pos_map, 1e-10, 1.0))
     cross_entropy = tf.reduce_sum(cross_entropy_map, axis=-1)
     return -tf.reduce_mean(cross_entropy)
     
 
-def train(loss, global_step):
+def train(loss):
     """Train the model.
     
     Create an optimizer and apply to all trainable variables.
@@ -480,7 +485,8 @@ def train(loss, global_step):
     Returns:
         train_op: op for training.
     """
-    opt = tf.train.GradientDescentOptimizer(INITIAL_LEARNING_RATE)
-    train_op = opt.minimize(loss, global_step)
+    lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE, DECAY_STEPS, DECAY_FACTOR, True)
+    opt = tf.train.GradientDescentOptimizer(lr)
+    train_op = opt.minimize(loss)
     return train_op
     

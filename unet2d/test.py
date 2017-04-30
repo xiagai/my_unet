@@ -10,11 +10,9 @@ import matplotlib.pyplot as plt
 from unet2d import metric
 
 
-
-
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '/houseware/codalab/Liver_Tumor_Segmentation_Challenge/training_result2',
+tf.app.flags.DEFINE_string('train_dir', '/houseware/codalab/Liver_Tumor_Segmentation_Challenge/experiment/training_result',
                            """Directory where to write event logs"""
                            """and checkpoint.""")
 
@@ -30,13 +28,11 @@ def evaluate():
         pos_map = tf.nn.softmax(logits)
         prediction_map = tf.reshape(tf.argmin(pos_map, axis=3), [512, 512])
         
-        safer = tf.train.Saver()
+        saver = tf.train.Saver()
         
         with tf.Session() as sess:
-            ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-            if ckpt and ckpt.model_checkpoint_path:
-                safer.restore(sess, ckpt.model_checkpoint_path)
             
+            saver.restore(sess, FLAGS.train_dir)
             scores = {}
             scores['dc'] = 0.
             scores['jc'] = 0.
@@ -45,7 +41,7 @@ def evaluate():
             scores['hd'] = 0.
             
             for i in range(2000):
-                img_test, lab_test = functions.inputs(isTestData=True, useGTData=True, weighted_label=False, randomly=False)
+                img_test, lab_test = functions.inputs(isTestData=True, useGTData=True, weighted_label=0, randomly=False)
                 prediction = prediction_map.eval(feed_dict={x: img_test}, session=sess)
                 pos_array = pos_map.eval(feed_dict={x: img_test}, session=sess)[0, :, :, 0]
                 pos_array_threshold = pos_array.copy()
