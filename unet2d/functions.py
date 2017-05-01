@@ -7,15 +7,19 @@ import os
 import tensorflow as tf
 import numpy as np
 import nibabel as nib
+import matplotlib.pyplot as plt
+from unet2d import metric
 
 INITIAL_LEARNING_RATE = 0.005
 DECAY_STEPS = 4000
 DECAY_FACTOR = 0.1
+data_dir = '/houseware/codalab/Liver_Tumor_Segmentation_Challenge/'
 
-class GetData():
-    def __init__(self, isTestData):
-        self.data_dir = '/houseware/codalab/Liver_Tumor_Segmentation_Challenge/'
-        self.isTestData = isTestData
+class GetRandomData():
+    def __init__(self, low, up):
+        self.data_dir = data_dir
+        self.low = low
+        self.up = up
         self.n = 0
         self.i = None
         self.NUM = -1
@@ -24,10 +28,7 @@ class GetData():
         
     def read_files(self):
         training_batch_dir = os.path.join(self.data_dir, 'Training_Batch')
-        if self.isTestData:
-            self.i = np.random.randint(110, 131)
-        else:
-            self.i = np.random.randint(0, 110)
+        self.i = np.random.randint(self.low, self.up)
         print(self.i)
         image_filename = os.path.join(training_batch_dir, 'volume-%d.nii' % self.i)
         label_filename = os.path.join(training_batch_dir, 'segmentation-%d.nii' % self.i)
@@ -40,9 +41,9 @@ class GetData():
         self.images = nib.load(image_filename).get_data()
         self.labels = nib.load(label_filename).get_data()
         self.NUM = self.images.shape[2]
-        self.labels[self.labels == 2] = 1
+        self.labels[self.labels == 2] = 0
         
-    def get_a_slice(self, randomly):
+    def get_a_slice(self, randomly=True):
         if randomly:
             if self.NUM < 0:
                 self.read_files()
@@ -61,33 +62,27 @@ class GetData():
                 self.n += 1
                 return self.images[:, :, self.n], self.labels[:, :, self.n]
 
-getTrainDataMachine = GetData(False)
-getTestDataMachine = GetData(True)
-
-def inputs(isTestData, useGTData, weighted_label, randomly):
-    getDataMachine = getTestDataMachine if isTestData else getTrainDataMachine
-    img, lab = getDataMachine.get_a_slice(randomly)
+def inputs(useGTData, weighted_label, getTrainDataMachine):
+    img, lab = getTrainDataMachine.get_a_slice()
     if useGTData:
         while(np.max(lab) == np.min(lab)):
-            img, lab = getDataMachine.get_a_slice(randomly)
+            img, lab = getTrainDataMachine.get_a_slice()
         
     lab = lab.astype(np.int)
     lab2 = lab - 1
     lab2[lab2 == 1] = 0
     lab2[lab2 == -1] = 1
-    if isTestData:
-        return img, lab
-    else:
-        if weighted_label != 0:
-            object_size = float(np.count_nonzero(lab))
-            background_size = float(np.count_nonzero(lab2))
-            lab = lab * weighted_label
-            lab2 = lab2 * (1 - (weighted_label - 1) * object_size / background_size)
-            
-        lab = np.reshape(lab, [512, 512, 1])
-        lab2 = np.reshape(lab2, [512, 512, 1])
-        lab = np.concatenate([lab, lab2], axis=2)
-        return img, lab
+    
+    if weighted_label != 0:
+        object_size = float(np.count_nonzero(lab))
+        background_size = float(np.count_nonzero(lab2))
+        lab = lab * weighted_label
+        lab2 = lab2 * (1 - (weighted_label - 1) * object_size / background_size)
+        
+    lab = np.reshape(lab, [512, 512, 1])
+    lab2 = np.reshape(lab2, [512, 512, 1])
+    lab = np.concatenate([lab, lab2], axis=2)
+    return img, lab
 
 def _variable_on_cpu(name, shape, initializer):
     """Helper to create a Variable.
@@ -489,4 +484,85 @@ def train(loss):
     opt = tf.train.GradientDescentOptimizer(lr)
     train_op = opt.minimize(loss)
     return train_op
+
+def evaluate(pos_map, x, sess, lower, upper, useGTData, plot):
+    scores = {}
+    scores['dc'] = 0.
+    scores['jc'] = 0.
+    scores['ravd'] = 0.
+    scores['assd'] = 0.
+    scores['hd'] = 0.
     
+    count = 0
+    for i in range(lower, upper):
+        training_batch_dir = os.path.join(data_dir, 'Training_Batch')
+        print(i)
+        image_filename = os.path.join(training_batch_dir, 'volume-%d.nii' % i)
+        label_filename = os.path.join(training_batch_dir, 'segmentation-%d.nii' % i)
+        
+        if not tf.gfile.Exists(image_filename):
+            raise ValueError('Failed to find file: ' + image_filename)
+        if not tf.gfile.Exists(label_filename):
+            raise ValueError('Failed to find file: ' + label_filename)
+        
+        images = nib.load(image_filename).get_data()
+        labels = nib.load(label_filename).get_data()
+        NUM = images.shape[2]
+        print(NUM)
+        labels[labels == 2] = 0
+        j = 0
+        while j < NUM:
+            count += 1
+            img_test = images[:, :, j]
+            lab_test = labels[:, :, j]
+            if useGTData:
+                while np.max(lab_test) == np.min(lab_test) and j + 1 < NUM:
+                    j += 1
+                    img_test = images[:, :, j]
+                    lab_test = labels[:, :, j]
+                if np.max(lab_test) == np.min(lab_test):
+                    j += 1
+                    continue
+            pos_array = pos_map.eval(feed_dict={x: img_test}, session=sess)[0, :, :, 0]
+            prediction = pos_array.copy()
+            prediction[prediction > 0.5] = 1
+            prediction[prediction <= 0.5] = 0
+            pos_array_threshold = pos_array.copy()
+            pos_array_threshold[pos_array_threshold > 0.2] = 1
+            pos_array_threshold[pos_array_threshold <= 0.2] = 0
+            # plot part
+            if plot:
+                plt.subplot(3, 2, 1)
+                plt.imshow(img_test, cmap='gray')
+                plt.subplot(3, 2, 2)
+                plt.imshow(lab_test, cmap='gray')
+                plt.subplot(3, 2, 3)
+                plt.imshow(prediction, cmap='gray')
+                plt.subplot(3, 2, 4)
+                plt.imshow(pos_array, cmap='gray')
+                plt.subplot(3, 2, 5)
+                plt.imshow(pos_array_threshold, cmap='gray')
+                plt.show()
+            
+            dc = metric.dice(pos_array_threshold, lab_test)
+            jc = metric.jaccard(pos_array_threshold, lab_test)
+            ravd = metric.ravd(pos_array_threshold, lab_test)
+            
+            if 0 == np.count_nonzero(pos_array_threshold) or 0 == np.count_nonzero(lab_test):
+                assd = scores['assd'] / count
+                hd = scores['hd'] / count
+            else:
+                assd = metric.assd(pos_array_threshold, lab_test)
+                hd = metric.hausdorff(pos_array_threshold, lab_test)
+            scores['dc'] += dc
+            scores['jc'] += jc
+            scores['ravd'] += ravd
+            scores['assd'] += assd
+            scores['hd'] += hd
+            if count % 100 == 0:
+                for k, v in scores.items():
+                    print(k + ': ', end='')
+                    print((v / count), end='    ')
+                print('\n')
+            j += 1
+    print(count)
